@@ -1,0 +1,11 @@
+# Pastikan kamu ada di folder project
+cd validasi-thermal-retort
+
+# Tambahkan file yang diubah
+git add validasi_thermal_retort.py
+
+# Commit perubahan
+git commit -m "Update: grafik suhu & validasi F0 otomatis"
+
+# Push ke GitHub
+git push origin main
