@@ -141,12 +141,11 @@ if temps:
     ax2.legend(loc="upper right")
     st.pyplot(fig)
 
-    if st.button("📄 Ekspor ke PDF"):
+   if st.button("📄 Ekspor ke PDF"):
     pdf = PDF()
     pdf.add_metadata(nama_produk, tanggal_proses, nama_operator, nama_alat, f0[-1], valid)
     pdf_bytes = pdf.output(dest='S').encode('latin1')
     st.download_button("💾 Unduh PDF", data=pdf_bytes, file_name="laporan_validasi.pdf", mime="application/pdf")
-
 
 else:
     st.warning("⚠️ Masukkan data suhu terlebih dahulu.")
