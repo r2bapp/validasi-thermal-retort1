@@ -81,7 +81,8 @@ if input_method == "Manual":
 elif input_method == "Upload Excel":
     st.subheader("📤 Upload File Excel")
     uploaded_file = st.file_uploader("Pilih file Excel (.xlsx)", type=["xlsx"])
-       if uploaded_file:
+
+        if uploaded_file:
         temps = extract_suhu_from_umkm_excel(uploaded_file)
 
         if len(temps) == 0:
