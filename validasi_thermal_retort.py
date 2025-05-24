@@ -67,7 +67,7 @@ def buat_pdf_laporan(nama_file, f0, valid, durasi_121):
     pdf.ln(10)
     pdf.cell(200, 10, txt=f"Nama File: {nama_file}", ln=True)
     pdf.cell(200, 10, txt=f"Nilai F0: {f0}", ln=True)
-    pdf.cell(200, 10, txt=f"Durasi Suhu ≥121°C: {durasi_121} menit", ln=True)
+    pdf.cell(200, 10, txt=f"Durasi Suhu >=121°C: {durasi_121} menit", ln=True)
     pdf.cell(200, 10, txt=f"Status Validasi: {'VALID' if valid else 'TIDAK VALID'}", ln=True)
 
     buffer = io.BytesIO()
