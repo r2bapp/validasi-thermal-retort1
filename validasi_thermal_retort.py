@@ -36,7 +36,7 @@ def extract_suhu_from_umkm_excel(file):
         xls = pd.ExcelFile(file, engine="openpyxl")
         df_raw = xls.parse('Sheet1', header=None)
 
-        # Cari baris tempat data suhu dimulai
+       # Cari baris tempat data suhu dimulai
         start_row = None
         for i, row in df_raw.iterrows():
             if row.astype(str).str.contains("DATA PANTAUAN", case=False, na=False).any():
@@ -110,7 +110,7 @@ if input_method == "Manual":
         temps.append(temp)
 
 elif input_method == "Upload Excel":
-    st.subheader("📤 Upload File Excel")
+    st.subheader("📄 Upload File Excel")
     uploaded_file = st.file_uploader("Pilih file Excel (.xlsx)", type=["xlsx"])
     if uploaded_file:
         temps = extract_suhu_from_umkm_excel(uploaded_file)
@@ -141,11 +141,11 @@ if temps:
     ax2.legend(loc="upper right")
     st.pyplot(fig)
 
-   if st.button("📄 Ekspor ke PDF"):
-    pdf = PDF()
-    pdf.add_metadata(nama_produk, tanggal_proses, nama_operator, nama_alat, f0[-1], valid)
-    pdf_bytes = pdf.output(dest='S').encode('latin1')
-    st.download_button("💾 Unduh PDF", data=pdf_bytes, file_name="laporan_validasi.pdf", mime="application/pdf")
+    if st.button("📄 Ekspor ke PDF"):
+        pdf = PDF()
+        pdf.add_metadata(nama_produk, tanggal_proses, nama_operator, nama_alat, f0[-1], valid)
+        pdf_bytes = pdf.output(dest='S').encode('latin1')
+        st.download_button("💾 Unduh PDF", data=pdf_bytes, file_name="laporan_validasi.pdf", mime="application/pdf")
 
 else:
     st.warning("⚠️ Masukkan data suhu terlebih dahulu.")
