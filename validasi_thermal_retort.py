@@ -78,27 +78,17 @@ def check_minimum_holding_time(temps, min_temp=121.1, min_duration=3):
     return False
 
 # Fungsi ekspor PDF
-from fpdf import FPDF
-from io import BytesIO
-import streamlit as st
-
 class PDF(FPDF):
-    def __init__(self):
-        super().__init__()
-        # Tambahkan font Unicode (misal: DejaVu)
-        self.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
-        self.set_font('DejaVu', '', 10)
-
     def header(self):
-        self.set_font('DejaVu', 'B', 12)
+        self.set_font('Arial', 'B', 12)
         self.cell(0, 10, 'Laporan Validasi Thermal', ln=True, align='C')
 
     def chapter_title(self, title):
-        self.set_font('DejaVu', 'B', 10)
+        self.set_font('Arial', 'B', 10)
         self.cell(0, 10, title, ln=True)
 
     def chapter_body(self, text):
-        self.set_font('DejaVu', '', 10)
+        self.set_font('Arial', '', 10)
         self.multi_cell(0, 10, text)
 
     def add_metadata(self, produk, tanggal, operator, alat, f0_total, passed):
@@ -106,9 +96,7 @@ class PDF(FPDF):
         self.chapter_title("Metadata Proses")
         self.chapter_body(f"Produk: {produk}\nTanggal Proses: {tanggal}\nOperator: {operator}\nAlat Retort: {alat}")
         self.chapter_title("Hasil Validasi")
-        status = "✅ Lolos" if passed else "❌ Tidak Lolos"
-        self.chapter_body(f"Nilai F₀ Total: {f0_total:.2f}\nValidasi Suhu ≥121.1°C selama 3 menit: {status}")
-   
+        self.chapter_body(f"Nilai F₀ Total: {f0_total:.2f}\nValidasi Suhu ≥121.1°C selama 3 menit: {'✅ Lolos' if passed else '❌ Tidak Lolos'}")
 
 # Pilihan metode input
 input_method = st.radio("🔘 Pilih Metode Input", ["Manual", "Upload Excel"])
@@ -153,12 +141,11 @@ if temps:
     ax2.legend(loc="upper right")
     st.pyplot(fig)
 
-  if st.button("📄 Ekspor ke PDF"):
-    pdf = PDF()
-    pdf.add_metadata(nama_produk, tanggal_proses, nama_operator, nama_alat, f0[-1], valid)
-    pdf_bytes = pdf.output(dest='S').encode('latin1')
-    st.download_button("💾 Unduh PDF", data=pdf_bytes, file_name="laporan_validasi.pdf", mime="application/pdf")
-
+    if st.button("📄 Ekspor ke PDF"):
+        pdf = PDF()
+        pdf.add_metadata(nama_produk, tanggal_proses, nama_operator, nama_alat, f0[-1], valid)
+        pdf_bytes = pdf.output(dest='S').encode('latin1')
+        st.download_button("💾 Unduh PDF", data=pdf_bytes, file_name="laporan_validasi.pdf", mime="application/pdf")
 
 else:
     st.warning("⚠️ Masukkan data suhu terlebih dahulu.")
