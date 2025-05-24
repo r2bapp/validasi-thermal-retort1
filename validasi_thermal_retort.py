@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-from datetime import datetime
 
 st.set_page_config(page_title="Validasi Thermal Retort", layout="wide")
 st.title("🔥 Validasi Thermal Proses Sterilisasi - PT Rumah Retort Bersama")
@@ -13,9 +11,8 @@ Aplikasi ini menghitung nilai **F₀ (F-nol)** dari data suhu per menit selama p
 Gunakan input manual atau upload file Excel berisi suhu tiap menit.
 """)
 
-# Fungsi hitung F0
+# Fungsi hitung F₀
 def calculate_f0(temps, T_ref=121.1, z=10):
-    """Menghitung akumulasi nilai F₀ berdasarkan suhu tiap menit."""
     f0_values = []
     for T in temps:
         if T < 90:
@@ -24,23 +21,54 @@ def calculate_f0(temps, T_ref=121.1, z=10):
             f0_values.append(10 ** ((T - T_ref) / z))
     return np.cumsum(f0_values)
 
-# Simpan riwayat upload ke CSV lokal
-def log_upload(filename, total_f0, max_temp, avg_temp):
-    log_file = "riwayat_upload.csv"
-    waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    data = pd.DataFrame([{
-        "Waktu": waktu,
-        "Nama File": filename,
-        "F₀ Total": round(total_f0, 2),
-        "Suhu Maks": round(max_temp, 2),
-        "Suhu Rata-rata": round(avg_temp, 2)
-    }])
-    if os.path.exists(log_file):
-        data.to_csv(log_file, mode='a', header=False, index=False)
-    else:
-        data.to_csv(log_file, index=False)
+# Fungsi ekstraksi suhu dari file Excel UMKM
+def extract_suhu_from_umkm_excel(file):
+    try:
+        xls = pd.ExcelFile(file)
+        df_raw = xls.parse('Sheet1', header=None)
 
-# INPUT METODE
+        # Cari baris tempat data suhu dimulai
+        start_row = None
+        for i, row in df_raw.iterrows():
+            if row.astype(str).str.contains("DATA PANTAUAN", case=False, na=False).any():
+                start_row = i + 1
+                break
+
+        if start_row is None:
+            raise ValueError("Baris 'DATA PANTAUAN' tidak ditemukan.")
+
+        df_data = df_raw.iloc[start_row:].reset_index(drop=True)
+
+        suhu_col = None
+        for col in df_data.columns:
+            numeric_col = pd.to_numeric(df_data[col], errors='coerce')
+            if (numeric_col > 90).sum() > 2:
+                suhu_col = col
+                break
+
+        if suhu_col is None:
+            raise ValueError("Kolom suhu tidak ditemukan.")
+
+        suhu = pd.to_numeric(df_data[suhu_col], errors='coerce').dropna().tolist()
+        return suhu
+
+    except Exception as e:
+        st.error(f"❌ Gagal ekstrak suhu dari file: {e}")
+        return []
+
+# Fungsi cek suhu minimal 121.1°C selama ≥3 menit
+def check_minimum_holding_time(temps, min_temp=121.1, min_duration=3):
+    holding_minutes = 0
+    for t in temps:
+        if t >= min_temp:
+            holding_minutes += 1
+            if holding_minutes >= min_duration:
+                return True
+        else:
+            holding_minutes = 0
+    return False
+
+# Pilihan metode input
 input_method = st.radio("🔘 Pilih Metode Input", ["Manual", "Upload Excel"])
 
 if input_method == "Manual":
@@ -54,12 +82,16 @@ if input_method == "Manual":
     if st.button("Hitung F₀"):
         f0 = calculate_f0(temps)
         st.success(f"✅ Nilai F₀ Total: {f0[-1]:.2f}")
-        st.write(f"🌡️ Suhu Maksimum: {max(temps):.2f}°C")
-        st.write(f"📈 Suhu Rata-rata: {np.mean(temps):.2f}°C")
+
+        if check_minimum_holding_time(temps):
+            st.success("✅ Suhu ≥121.1°C tercapai minimal selama 3 menit")
+        else:
+            st.warning("⚠️ Suhu ≥121.1°C belum tercapai selama 3 menit")
 
         fig, ax = plt.subplots()
         ax.plot(range(1, len(temps)+1), temps, label="Suhu (°C)", marker='o')
         ax.axhline(90, color='red', linestyle='--', label="Ambang F₀ (90°C)")
+        ax.axhline(121.1, color='green', linestyle='--', label="Target BPOM (121.1°C)")
         ax.set_xlabel("Menit")
         ax.set_ylabel("Suhu (°C)")
 
@@ -74,49 +106,32 @@ if input_method == "Manual":
 elif input_method == "Upload Excel":
     st.subheader("📤 Upload File Excel")
     uploaded_file = st.file_uploader("Pilih file Excel (.xlsx)", type=["xlsx"])
-    
+
     if uploaded_file:
-        try:
-            df = pd.read_excel(uploaded_file, header=None)
-            st.write("📄 Preview Data:", df.head(15))
+        temps = extract_suhu_from_umkm_excel(uploaded_file)
 
-            # Cari baris setelah "DATA PANTAUAN"
-            start_row = None
-            for i, row in df.iterrows():
-                if row.astype(str).str.contains("DATA PANTAUAN", case=False, na=False).any():
-                    start_row = i + 1
-                    break
+        if len(temps) == 0:
+            st.error("❌ Tidak ada data suhu valid ditemukan.")
+        else:
+            st.info(f"📊 Data suhu valid ditemukan: {len(temps)} menit")
+            st.line_chart(temps, use_container_width=True)
 
-            if start_row is None:
-                raise ValueError("Tidak ditemukan baris 'DATA PANTAUAN'.")
+            f0 = calculate_f0(temps)
 
-            df_data = df.iloc[start_row:].reset_index(drop=True)
+            if f0[-1] == 0:
+                st.warning("⚠️ Suhu sudah >90°C, tapi nilai F₀ masih nol. Cek kembali logika atau durasi suhu tinggi.")
+            else:
+                st.success(f"✅ Nilai F₀ Total: {f0[-1]:.2f}")
 
-            # Otomatis deteksi kolom suhu dan tekanan
-            suhu_col, tekan_col = None, None
-            for col in df_data.columns:
-                col_data = pd.to_numeric(df_data[col], errors='coerce')
-                if (col_data > 90).sum() > 2:
-                    suhu_col = col
-                elif (col_data > 0).sum() > 5 and tekan_col is None:
-                    tekan_col = col
+            if check_minimum_holding_time(temps):
+                st.success("✅ Suhu ≥121.1°C tercapai minimal selama 3 menit")
+            else:
+                st.warning("⚠️ Suhu ≥121.1°C belum tercapai selama 3 menit")
 
-            if suhu_col is None:
-                raise ValueError("Kolom suhu tidak ditemukan.")
-            
-            suhu = pd.to_numeric(df_data[suhu_col], errors='coerce').dropna().tolist()
-            f0 = calculate_f0(suhu)
-            st.success(f"✅ Nilai F₀ Total: {f0[-1]:.2f}")
-            st.write(f"🌡️ Suhu Maksimum: {max(suhu):.2f}°C")
-            st.write(f"📈 Suhu Rata-rata: {np.mean(suhu):.2f}°C")
-
-            # Log file ke CSV server
-            log_upload(uploaded_file.name, f0[-1], max(suhu), np.mean(suhu))
-
-            # Plot suhu dan F0
             fig, ax = plt.subplots()
-            ax.plot(range(1, len(suhu)+1), suhu, label="Suhu (°C)", marker='o')
-            ax.axhline(90, color='red', linestyle='--', label="Ambang F₀")
+            ax.plot(range(1, len(temps)+1), temps, label="Suhu (°C)", marker='o')
+            ax.axhline(90, color='red', linestyle='--', label="Ambang F₀ (90°C)")
+            ax.axhline(121.1, color='green', linestyle='--', label="Target BPOM (121.1°C)")
             ax.set_xlabel("Menit")
             ax.set_ylabel("Suhu (°C)")
 
@@ -127,17 +142,3 @@ elif input_method == "Upload Excel":
             ax.legend(loc="upper left")
             ax2.legend(loc="upper right")
             st.pyplot(fig)
-
-            # Plot tekanan (jika tersedia)
-            if tekan_col is not None:
-                tekanan = pd.to_numeric(df_data[tekan_col], errors='coerce').dropna().tolist()
-                st.write("📉 Grafik Tekanan:")
-                fig2, ax3 = plt.subplots()
-                ax3.plot(range(1, len(tekanan)+1), tekanan, color='blue', label="Tekanan (bar)", marker='x')
-                ax3.set_xlabel("Menit")
-                ax3.set_ylabel("Tekanan (bar)")
-                ax3.legend()
-                st.pyplot(fig2)
-
-        except Exception as e:
-            st.error(f"Terjadi kesalahan saat memproses file: {e}")
