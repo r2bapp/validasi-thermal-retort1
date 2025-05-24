@@ -87,7 +87,7 @@ if uploaded_file:
 
         # Ambil hanya kolom suhu otomatis
         suhu_col = [col for col in df.columns if "suhu" in col.lower()][0]
-        suhu_data = df[suhu_col].tolist()
+        suhu_data = pd.to_numeric(df[suhu_col], errors='coerce').tolist()
 
         # Hitung F0 dan validasi suhu ≥121°C selama 3 menit
         f0, durasi_121 = hitung_f0(suhu_data)
