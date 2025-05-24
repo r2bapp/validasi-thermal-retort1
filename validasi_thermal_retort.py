@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from fpdf import FPDF
+from io import BytesIO
 
 st.set_page_config(page_title="Validasi Thermal Retort", layout="wide")
 st.title("🔥 Validasi Thermal Proses Sterilisasi - PT Rumah Retort Bersama")
@@ -10,6 +12,13 @@ st.markdown("""
 Aplikasi ini menghitung nilai **F₀ (F-nol)** dari data suhu per menit selama proses sterilisasi.
 Gunakan input manual atau upload file Excel berisi suhu tiap menit.
 """)
+
+# Metadata form
+st.sidebar.header("📝 Form Metadata Proses")
+nama_produk = st.sidebar.text_input("Nama Produk")
+tanggal_proses = st.sidebar.date_input("Tanggal Proses")
+nama_operator = st.sidebar.text_input("Nama Operator")
+nama_alat = st.sidebar.text_input("Nama Alat Retort")
 
 # Fungsi hitung F₀
 def calculate_f0(temps, T_ref=121.1, z=10):
@@ -24,7 +33,7 @@ def calculate_f0(temps, T_ref=121.1, z=10):
 # Fungsi ekstraksi suhu dari file Excel UMKM
 def extract_suhu_from_umkm_excel(file):
     try:
-        xls = pd.ExcelFile(file)
+        xls = pd.ExcelFile(file, engine="openpyxl")
         df_raw = xls.parse('Sheet1', header=None)
 
         # Cari baris tempat data suhu dimulai
@@ -68,77 +77,76 @@ def check_minimum_holding_time(temps, min_temp=121.1, min_duration=3):
             holding_minutes = 0
     return False
 
+# Fungsi ekspor PDF
+class PDF(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 10, 'Laporan Validasi Thermal', ln=True, align='C')
+
+    def chapter_title(self, title):
+        self.set_font('Arial', 'B', 10)
+        self.cell(0, 10, title, ln=True)
+
+    def chapter_body(self, text):
+        self.set_font('Arial', '', 10)
+        self.multi_cell(0, 10, text)
+
+    def add_metadata(self, produk, tanggal, operator, alat, f0_total, passed):
+        self.add_page()
+        self.chapter_title("Metadata Proses")
+        self.chapter_body(f"Produk: {produk}\nTanggal Proses: {tanggal}\nOperator: {operator}\nAlat Retort: {alat}")
+        self.chapter_title("Hasil Validasi")
+        self.chapter_body(f"Nilai F₀ Total: {f0_total:.2f}\nValidasi Suhu ≥121.1°C selama 3 menit: {'✅ Lolos' if passed else '❌ Tidak Lolos'}")
+
 # Pilihan metode input
 input_method = st.radio("🔘 Pilih Metode Input", ["Manual", "Upload Excel"])
+temps = []
 
 if input_method == "Manual":
     st.subheader("📋 Input Manual Suhu per Menit")
     waktu = st.number_input("Jumlah menit", min_value=1, max_value=120, value=10)
-    temps = []
     for i in range(waktu):
         temp = st.number_input(f"Menit ke-{i+1}: Suhu (°C)", value=25.0, step=0.1)
         temps.append(temp)
 
-    if st.button("Hitung F₀"):
-        f0 = calculate_f0(temps)
-        st.success(f"✅ Nilai F₀ Total: {f0[-1]:.2f}")
-
-        if check_minimum_holding_time(temps):
-            st.success("✅ Suhu ≥121.1°C tercapai minimal selama 3 menit")
-        else:
-            st.warning("⚠️ Suhu ≥121.1°C belum tercapai selama 3 menit")
-
-        fig, ax = plt.subplots()
-        ax.plot(range(1, len(temps)+1), temps, label="Suhu (°C)", marker='o')
-        ax.axhline(90, color='red', linestyle='--', label="Ambang F₀ (90°C)")
-        ax.axhline(121.1, color='green', linestyle='--', label="Target BPOM (121.1°C)")
-        ax.set_xlabel("Menit")
-        ax.set_ylabel("Suhu (°C)")
-
-        ax2 = ax.twinx()
-        ax2.plot(range(1, len(f0)+1), f0, color='orange', label="F₀ Akumulatif", linestyle='--')
-        ax2.set_ylabel("F₀")
-
-        ax.legend(loc="upper left")
-        ax2.legend(loc="upper right")
-        st.pyplot(fig)
-
 elif input_method == "Upload Excel":
     st.subheader("📤 Upload File Excel")
     uploaded_file = st.file_uploader("Pilih file Excel (.xlsx)", type=["xlsx"])
-
     if uploaded_file:
         temps = extract_suhu_from_umkm_excel(uploaded_file)
 
-        if len(temps) == 0:
-            st.error("❌ Tidak ada data suhu valid ditemukan.")
-        else:
-            st.info(f"📊 Data suhu valid ditemukan: {len(temps)} menit")
-            st.line_chart(temps, use_container_width=True)
+if temps:
+    f0 = calculate_f0(temps)
+    st.info(f"📊 Data suhu valid ditemukan: {len(temps)} menit")
+    st.success(f"✅ Nilai F₀ Total: {f0[-1]:.2f}")
 
-            f0 = calculate_f0(temps)
+    valid = check_minimum_holding_time(temps)
+    if valid:
+        st.success("✅ Suhu ≥121.1°C tercapai minimal selama 3 menit")
+    else:
+        st.warning("⚠️ Suhu ≥121.1°C belum tercapai selama 3 menit")
 
-            if f0[-1] == 0:
-                st.warning("⚠️ Suhu sudah >90°C, tapi nilai F₀ masih nol. Cek kembali logika atau durasi suhu tinggi.")
-            else:
-                st.success(f"✅ Nilai F₀ Total: {f0[-1]:.2f}")
+    fig, ax = plt.subplots()
+    ax.plot(range(1, len(temps)+1), temps, label="Suhu (°C)", marker='o')
+    ax.axhline(90, color='red', linestyle='--', label="Ambang F₀ (90°C)")
+    ax.axhline(121.1, color='green', linestyle='--', label="Target BPOM (121.1°C)")
+    ax.set_xlabel("Menit")
+    ax.set_ylabel("Suhu (°C)")
 
-            if check_minimum_holding_time(temps):
-                st.success("✅ Suhu ≥121.1°C tercapai minimal selama 3 menit")
-            else:
-                st.warning("⚠️ Suhu ≥121.1°C belum tercapai selama 3 menit")
+    ax2 = ax.twinx()
+    ax2.plot(range(1, len(f0)+1), f0, color='orange', label="F₀ Akumulatif", linestyle='--')
+    ax2.set_ylabel("F₀")
 
-            fig, ax = plt.subplots()
-            ax.plot(range(1, len(temps)+1), temps, label="Suhu (°C)", marker='o')
-            ax.axhline(90, color='red', linestyle='--', label="Ambang F₀ (90°C)")
-            ax.axhline(121.1, color='green', linestyle='--', label="Target BPOM (121.1°C)")
-            ax.set_xlabel("Menit")
-            ax.set_ylabel("Suhu (°C)")
+    ax.legend(loc="upper left")
+    ax2.legend(loc="upper right")
+    st.pyplot(fig)
 
-            ax2 = ax.twinx()
-            ax2.plot(range(1, len(f0)+1), f0, color='orange', label="F₀ Akumulatif", linestyle='--')
-            ax2.set_ylabel("F₀")
+    if st.button("📄 Ekspor ke PDF"):
+        pdf = PDF()
+        pdf.add_metadata(nama_produk, tanggal_proses, nama_operator, nama_alat, f0[-1], valid)
+        pdf_output = BytesIO()
+        pdf.output(pdf_output)
+        st.download_button("💾 Unduh PDF", data=pdf_output.getvalue(), file_name="laporan_validasi.pdf", mime="application/pdf")
 
-            ax.legend(loc="upper left")
-            ax2.legend(loc="upper right")
-            st.pyplot(fig)
+else:
+    st.warning("⚠️ Masukkan data suhu terlebih dahulu.")
