@@ -13,70 +13,34 @@ def extract_suhu_from_umkm_excel(file):
         # Cari baris tempat data suhu dimulai
         start_row = None
         for i, row in df_raw.iterrows():
-            if row.astype(str).str.contains("DATA PANTAUAN", case=False).any():
+            if row.astype(str).str.contains("DATA PANTAUAN", case=False, na=False).any():
                 start_row = i + 1
                 break
 
         if start_row is None:
-            raise ValueError("Baris data suhu tidak ditemukan.")
+            raise ValueError("Baris 'DATA PANTAUAN' tidak ditemukan.")
 
+        # Ambil data setelah baris 'DATA PANTAUAN'
         df_data = df_raw.iloc[start_row:].reset_index(drop=True)
 
-        # Cari kolom yang mengandung angka > 100 (indikasi suhu)
+        # Cari kolom yang paling mungkin berisi data suhu
         suhu_col = None
         for col in df_data.columns:
             numeric_col = pd.to_numeric(df_data[col], errors='coerce')
-            if (numeric_col > 90).sum() > 2:
+            if (numeric_col > 90).sum() > 2:  # asumsi suhu makanan > 90°C
                 suhu_col = col
                 break
 
         if suhu_col is None:
-            suhu_col = 1  # fallback
+            raise ValueError("Kolom suhu tidak ditemukan.")
 
-        temps = pd.to_numeric(df_data[suhu_col], errors='coerce').dropna().tolist()
-        return temps
+        # Ambil data suhu dan buang NaN
+        suhu = pd.to_numeric(df_data[suhu_col], errors='coerce').dropna().tolist()
+        return suhu
 
     except Exception as e:
-        st.error(f"Gagal ekstrak suhu dari file: {e}")
+        st.error(f"❌ Gagal ekstrak suhu dari file: {e}")
         return []
-            
-def simpan_log_csv(nama_file, f0, valid, durasi_121):
-    log_path = 'log_validasi.csv'
-    waktu = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    header = ['timestamp', 'nama_file', 'F0', 'status_validasi', 'durasi_121C']
-    row = [waktu, nama_file, f0, valid, durasi_121]
-
-    try:
-        with open(log_path, 'a', newline='') as f:
-            writer = csv.writer(f)
-            if f.tell() == 0:
-                writer.writerow(header)
-            writer.writerow(row)
-    except Exception as e:
-        st.error(f"Gagal menyimpan log: {e}")
-
-def buat_pdf_laporan(nama_file, f0, valid, durasi_121):
-    from fpdf import FPDF
-
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-
-    pdf.cell(200, 10, txt="LAPORAN VALIDASI THERMAL RETORT", ln=True, align='C')
-    pdf.ln(10)
-    pdf.cell(200, 10, txt=f"Nama File: {nama_file}", ln=True)
-    pdf.cell(200, 10, txt=f"Nilai F0: {f0}", ln=True)
-    pdf.cell(200, 10, txt=f"Durasi Suhu >=121°C: {durasi_121} menit", ln=True)
-    pdf.cell(200, 10, txt=f"Status Validasi: {'VALID' if valid else 'TIDAK VALID'}", ln=True)
-
-    buffer = io.BytesIO()
-    pdf.output(buffer)
-    buffer.seek(0)
-    return buffer
-
-# Streamlit UI
-st.title("Validasi Thermal Proses Sterilisasi - PT Rumah Retort Bersama")
-uploaded_file = st.file_uploader("Unggah file Excel suhu per menit", type=['xlsx'])
 
     if uploaded_file:
         temps = extract_suhu_from_umkm_excel(uploaded_file)
