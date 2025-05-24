@@ -2,3 +2,8 @@ streamlit
 pandas
 matplotlib
 openpyxl
+streamlit
+pandas
+matplotlib
+openpyxl
+fpdf
