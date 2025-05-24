@@ -1,67 +1,118 @@
-def extract_suhu_from_umkm_excel(file):
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import datetime
+import io
+import csv
+
+# Konstanta untuk perhitungan F0
+T_REF = 121.1
+Z_VALUE = 10
+
+def hitung_f0(data):
+    f0_total = 0
+    suhu_121_ke_atas = []
+    durasi_121 = 0
+
+    for i in range(len(data)):
+        suhu = data[i]
+        if pd.isna(suhu):
+            continue
+
+        delta_t = 1  # menit
+        f0 = 10 ** ((suhu - T_REF) / Z_VALUE) * delta_t
+        f0_total += f0
+
+        if suhu >= 121:
+            suhu_121_ke_atas.append(1)
+            durasi_121 += 1
+        else:
+            suhu_121_ke_atas.append(0)
+
+    return round(f0_total, 2), durasi_121
+
+def buat_grafik(suhu):
+    fig, ax = plt.subplots()
+    ax.plot(range(len(suhu)), suhu, marker='o')
+    ax.axhline(121, color='red', linestyle='--', label='121°C')
+    ax.set_xlabel('Menit')
+    ax.set_ylabel('Suhu (°C)')
+    ax.set_title('Grafik Suhu per Menit')
+    ax.legend()
+    st.pyplot(fig)
+
+def simpan_log_csv(nama_file, f0, valid, durasi_121):
+    log_path = 'log_validasi.csv'
+    waktu = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    header = ['timestamp', 'nama_file', 'F0', 'status_validasi', 'durasi_121C']
+    row = [waktu, nama_file, f0, valid, durasi_121]
+
     try:
-        xls = pd.ExcelFile(file)
-        df_raw = xls.parse('Sheet1', header=None)
+        with open(log_path, 'a', newline='') as f:
+            writer = csv.writer(f)
+            if f.tell() == 0:
+                writer.writerow(header)
+            writer.writerow(row)
+    except Exception as e:
+        st.error(f"Gagal menyimpan log: {e}")
 
-        # Cari baris tempat data suhu dimulai
-        start_row = None
-        for i, row in df_raw.iterrows():
-            if row.astype(str).str.contains("DATA PANTAUAN", case=False, na=False).any():
-                start_row = i + 1
-                break
+def buat_pdf_laporan(nama_file, f0, valid, durasi_121):
+    from fpdf import FPDF
 
-        if start_row is None:
-            raise ValueError("Baris 'DATA PANTAUAN' tidak ditemukan.")
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
 
-        # Ambil data setelah baris 'DATA PANTAUAN'
-        df_data = df_raw.iloc[start_row:].reset_index(drop=True)
+    pdf.cell(200, 10, txt="LAPORAN VALIDASI THERMAL RETORT", ln=True, align='C')
+    pdf.ln(10)
+    pdf.cell(200, 10, txt=f"Nama File: {nama_file}", ln=True)
+    pdf.cell(200, 10, txt=f"Nilai F0: {f0}", ln=True)
+    pdf.cell(200, 10, txt=f"Durasi Suhu ≥121°C: {durasi_121} menit", ln=True)
+    pdf.cell(200, 10, txt=f"Status Validasi: {'VALID' if valid else 'TIDAK VALID'}", ln=True)
 
-        # Cari kolom yang paling mungkin berisi data suhu
-        suhu_col = None
-        for col in df_data.columns:
-            numeric_col = pd.to_numeric(df_data[col], errors='coerce')
-            if (numeric_col > 90).sum() > 2:  # asumsi suhu makanan > 90°C
-                suhu_col = col
-                break
+    buffer = io.BytesIO()
+    pdf.output(buffer)
+    buffer.seek(0)
+    return buffer
 
-        if suhu_col is None:
-            raise ValueError("Kolom suhu tidak ditemukan.")
+# Streamlit UI
+st.title("Validasi Thermal Proses Sterilisasi - PT Rumah Retort Bersama")
+uploaded_file = st.file_uploader("Unggah file Excel suhu per menit", type=['xlsx'])
 
-        # Ambil data suhu dan buang NaN
-        suhu = pd.to_numeric(df_data[suhu_col], errors='coerce').dropna().tolist()
-        return suhu
+if uploaded_file:
+    try:
+        df = pd.read_excel(uploaded_file, engine='openpyxl')
+        st.write("### Data Suhu Mentah")
+        st.dataframe(df)
+
+        # Ambil hanya kolom suhu otomatis
+        suhu_col = [col for col in df.columns if "suhu" in col.lower()][0]
+        suhu_data = df[suhu_col].tolist()
+
+        # Hitung F0 dan validasi suhu ≥121°C selama 3 menit
+        f0, durasi_121 = hitung_f0(suhu_data)
+        is_valid = durasi_121 >= 3
+
+        # Tampilkan hasil
+        st.success(f"Nilai F0: {f0}")
+        st.info(f"Durasi suhu ≥121°C: {durasi_121} menit")
+        st.markdown(f"### Status: {'✅ PROSES STERIL VALID' if is_valid else '❌ TIDAK MEMENUHI SYARAT'}")
+
+        # Tampilkan grafik
+        st.write("### Grafik Suhu")
+        buat_grafik(suhu_data)
+
+        # Simpan log
+        simpan_log_csv(uploaded_file.name, f0, 'VALID' if is_valid else 'TIDAK VALID', durasi_121)
+
+        # Tombol unduh PDF
+        pdf_buffer = buat_pdf_laporan(uploaded_file.name, f0, is_valid, durasi_121)
+        st.download_button(
+            label="Unduh Laporan PDF",
+            data=pdf_buffer,
+            file_name="laporan_validasi.pdf",
+            mime="application/pdf"
+        )
 
     except Exception as e:
-        st.error(f"❌ Gagal ekstrak suhu dari file: {e}")
-        return []
-
-    if uploaded_file:
-        temps = extract_suhu_from_umkm_excel(uploaded_file)
-
-        if len(temps) == 0:
-            st.error("❌ Tidak ada data suhu valid ditemukan.")
-        else:
-            st.info(f"📊 Data suhu valid ditemukan: {len(temps)} menit")
-            st.line_chart(temps, use_container_width=True)
-
-            f0 = calculate_f0(temps)
-
-            if f0[-1] == 0:
-                st.warning("⚠️ Suhu sudah >90°C, tapi nilai F₀ masih nol. Cek kembali logika atau durasi suhu tinggi.")
-            else:
-                st.success(f"✅ Nilai F₀ Total: {f0[-1]:.2f}")
-
-            # Plot dengan suhu dan F0
-            fig, ax = plt.subplots()
-            ax.plot(range(1, len(temps)+1), temps, label="Suhu (°C)", marker='o')
-            ax.axhline(90, color='red', linestyle='--', label="Ambang F₀ (90°C)")
-            ax.set_xlabel("Menit")
-            ax.set_ylabel("Suhu (°C)")
-
-            ax2 = ax.twinx()
-            ax2.plot(range(1, len(f0)+1), f0, color='orange', label="F₀ Akumulatif", linestyle='--')
-            ax2.set_ylabel("F₀")
-
-            ax.legend(loc="upper left")
-            ax2.legend(loc="upper right")
-            st.pyplot(fig)
+        st.error(f"Terjadi kesalahan saat memproses file: {e}")
