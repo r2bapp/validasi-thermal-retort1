@@ -4,6 +4,40 @@ import matplotlib.pyplot as plt
 import datetime
 import io
 import csv
+def extract_suhu_from_umkm_excel(file):
+    try:
+        xls = pd.ExcelFile(file)
+        df_raw = xls.parse('Sheet1', header=None)
+
+        # Cari baris tempat data suhu dimulai
+        start_row = None
+        for i, row in df_raw.iterrows():
+            if row.astype(str).str.contains("DATA PANTAUAN", case=False).any():
+                start_row = i + 1
+                break
+
+        if start_row is None:
+            raise ValueError("Baris data suhu tidak ditemukan.")
+
+        df_data = df_raw.iloc[start_row:].reset_index(drop=True)
+
+        # Cari kolom yang mengandung angka > 100 (indikasi suhu)
+        suhu_col = None
+        for col in df_data.columns:
+            numeric_col = pd.to_numeric(df_data[col], errors='coerce')
+            if (numeric_col > 90).sum() > 2:
+                suhu_col = col
+                break
+
+        if suhu_col is None:
+            suhu_col = 1  # fallback
+
+        temps = pd.to_numeric(df_data[suhu_col], errors='coerce').dropna().tolist()
+        return temps
+
+    except Exception as e:
+        st.error(f"Gagal ekstrak suhu dari file: {e}")
+        return []
 
 # Konstanta untuk perhitungan F0
 T_REF = 121.1
@@ -79,40 +113,33 @@ def buat_pdf_laporan(nama_file, f0, valid, durasi_121):
 st.title("Validasi Thermal Proses Sterilisasi - PT Rumah Retort Bersama")
 uploaded_file = st.file_uploader("Unggah file Excel suhu per menit", type=['xlsx'])
 
-if uploaded_file:
-    try:
-        df = pd.read_excel(uploaded_file, engine='openpyxl')
-        st.write("### Data Suhu Mentah")
-        st.dataframe(df)
+    if uploaded_file:
+        temps = extract_suhu_from_umkm_excel(uploaded_file)
 
-        # Ambil hanya kolom suhu otomatis
-        suhu_col = [col for col in df.columns if "suhu" in col.lower()][0]
-        suhu_data = pd.to_numeric(df[suhu_col], errors='coerce').tolist()
+        if len(temps) == 0:
+            st.error("❌ Tidak ada data suhu valid ditemukan.")
+        else:
+            st.info(f"📊 Data suhu valid ditemukan: {len(temps)} menit")
+            st.line_chart(temps, use_container_width=True)
 
-        # Hitung F0 dan validasi suhu ≥121°C selama 3 menit
-        f0, durasi_121 = hitung_f0(suhu_data)
-        is_valid = durasi_121 >= 3
+            f0 = calculate_f0(temps)
 
-        # Tampilkan hasil
-        st.success(f"Nilai F0: {f0}")
-        st.info(f"Durasi suhu ≥121°C: {durasi_121} menit")
-        st.markdown(f"### Status: {'✅ PROSES STERIL VALID' if is_valid else '❌ TIDAK MEMENUHI SYARAT'}")
+            if f0[-1] == 0:
+                st.warning("⚠️ Suhu sudah >90°C, tapi nilai F₀ masih nol. Cek kembali logika atau durasi suhu tinggi.")
+            else:
+                st.success(f"✅ Nilai F₀ Total: {f0[-1]:.2f}")
 
-        # Tampilkan grafik
-        st.write("### Grafik Suhu")
-        buat_grafik(suhu_data)
+            # Plot dengan suhu dan F0
+            fig, ax = plt.subplots()
+            ax.plot(range(1, len(temps)+1), temps, label="Suhu (°C)", marker='o')
+            ax.axhline(90, color='red', linestyle='--', label="Ambang F₀ (90°C)")
+            ax.set_xlabel("Menit")
+            ax.set_ylabel("Suhu (°C)")
 
-        # Simpan log
-        simpan_log_csv(uploaded_file.name, f0, 'VALID' if is_valid else 'TIDAK VALID', durasi_121)
+            ax2 = ax.twinx()
+            ax2.plot(range(1, len(f0)+1), f0, color='orange', label="F₀ Akumulatif", linestyle='--')
+            ax2.set_ylabel("F₀")
 
-        # Tombol unduh PDF
-        pdf_buffer = buat_pdf_laporan(uploaded_file.name, f0, is_valid, durasi_121)
-        st.download_button(
-            label="Unduh Laporan PDF",
-            data=pdf_buffer,
-            file_name="laporan_validasi.pdf",
-            mime="application/pdf"
-        )
-
-    except Exception as e:
-        st.error(f"Terjadi kesalahan saat memproses file: {e}")
+            ax.legend(loc="upper left")
+            ax2.legend(loc="upper right")
+            st.pyplot(fig)
