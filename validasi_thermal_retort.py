@@ -141,11 +141,26 @@ if temps:
     ax2.legend(loc="upper right")
     st.pyplot(fig)
 
-    if st.button("📄 Ekspor ke PDF"):
-        pdf = PDF()
-        pdf.add_metadata(nama_produk, tanggal_proses, nama_operator, nama_alat, f0[-1], valid)
-        pdf_bytes = pdf.output(dest='S').encode('latin1')
-        st.download_button("💾 Unduh PDF", data=pdf_bytes, file_name="laporan_validasi.pdf", mime="application/pdf")
+   if st.button("📄 Ekspor ke PDF"):
+    pdf = PDF()
+
+    # Ubah semua teks agar hanya mengandung karakter ASCII
+    passed_text = "Lolos" if valid else "Tidak Lolos"
+    clean_produk = str(nama_produk).encode('ascii', errors='ignore').decode()
+    clean_operator = str(nama_operator).encode('ascii', errors='ignore').decode()
+    clean_alat = str(nama_alat).encode('ascii', errors='ignore').decode()
+    
+    pdf.add_metadata(
+        produk=clean_produk,
+        tanggal=str(tanggal_proses),
+        operator=clean_operator,
+        alat=clean_alat,
+        f0_total=f0[-1],
+        passed=passed_text
+    )
+
+    pdf_bytes = pdf.output(dest='S').encode('latin1')
+    st.download_button("💾 Unduh PDF", data=pdf_bytes, file_name="laporan_validasi.pdf", mime="application/pdf")
 
 else:
     st.warning("⚠️ Masukkan data suhu terlebih dahulu.")
