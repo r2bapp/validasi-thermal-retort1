@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import datetime
 import io
 import csv
+
 def extract_suhu_from_umkm_excel(file):
     try:
         xls = pd.ExcelFile(file)
@@ -38,43 +39,7 @@ def extract_suhu_from_umkm_excel(file):
     except Exception as e:
         st.error(f"Gagal ekstrak suhu dari file: {e}")
         return []
-
-# Konstanta untuk perhitungan F0
-T_REF = 121.1
-Z_VALUE = 10
-
-def hitung_f0(data):
-    f0_total = 0
-    suhu_121_ke_atas = []
-    durasi_121 = 0
-
-    for i in range(len(data)):
-        suhu = data[i]
-        if pd.isna(suhu):
-            continue
-
-        delta_t = 1  # menit
-        f0 = 10 ** ((suhu - T_REF) / Z_VALUE) * delta_t
-        f0_total += f0
-
-        if suhu >= 121:
-            suhu_121_ke_atas.append(1)
-            durasi_121 += 1
-        else:
-            suhu_121_ke_atas.append(0)
-
-    return round(f0_total, 2), durasi_121
-
-def buat_grafik(suhu):
-    fig, ax = plt.subplots()
-    ax.plot(range(len(suhu)), suhu, marker='o')
-    ax.axhline(121, color='red', linestyle='--', label='121°C')
-    ax.set_xlabel('Menit')
-    ax.set_ylabel('Suhu (°C)')
-    ax.set_title('Grafik Suhu per Menit')
-    ax.legend()
-    st.pyplot(fig)
-
+            
 def simpan_log_csv(nama_file, f0, valid, durasi_121):
     log_path = 'log_validasi.csv'
     waktu = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
