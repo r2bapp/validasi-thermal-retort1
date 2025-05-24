@@ -1,10 +1,3 @@
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-import datetime
-import io
-import csv
-
 def extract_suhu_from_umkm_excel(file):
     try:
         xls = pd.ExcelFile(file)
