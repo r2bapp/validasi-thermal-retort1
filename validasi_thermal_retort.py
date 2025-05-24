@@ -3,6 +3,41 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+def extract_suhu_from_umkm_excel(file):
+    try:
+        xls = pd.ExcelFile(file)
+        df_raw = xls.parse('Sheet1', header=None)
+
+        # Cari baris tempat data suhu dimulai
+        start_row = None
+        for i, row in df_raw.iterrows():
+            if row.astype(str).str.contains("DATA PANTAUAN", case=False).any():
+                start_row = i + 1
+                break
+
+        if start_row is None:
+            raise ValueError("Baris data suhu tidak ditemukan.")
+
+        df_data = df_raw.iloc[start_row:].reset_index(drop=True)
+
+        # Cari kolom yang mengandung angka > 100 (indikasi suhu)
+        suhu_col = None
+        for col in df_data.columns:
+            numeric_col = pd.to_numeric(df_data[col], errors='coerce')
+            if (numeric_col > 90).sum() > 2:
+                suhu_col = col
+                break
+
+        if suhu_col is None:
+            suhu_col = 1  # fallback
+
+        temps = pd.to_numeric(df_data[suhu_col], errors='coerce').dropna().tolist()
+        return temps
+
+    except Exception as e:
+        st.error(f"Gagal ekstrak suhu dari file: {e}")
+        return []
+
 st.set_page_config(page_title="Validasi Thermal Retort", layout="wide")
 st.title("🔥 Validasi Thermal Proses Sterilisasi - PT Rumah Retort Bersama")
 
@@ -46,30 +81,33 @@ if input_method == "Manual":
 elif input_method == "Upload Excel":
     st.subheader("📤 Upload File Excel")
     uploaded_file = st.file_uploader("Pilih file Excel (.xlsx)", type=["xlsx"])
-    if uploaded_file:
-        try:
-            df = pd.read_excel(uploaded_file)
-            st.write("📄 Preview Data:", df.head())
-            suhu_col = st.selectbox("Pilih kolom suhu (°C):", df.columns)
+       if uploaded_file:
+        temps = extract_suhu_from_umkm_excel(uploaded_file)
 
-            valid_temps = pd.to_numeric(df[suhu_col], errors='coerce').dropna()
-            temps = valid_temps.tolist()
+        if len(temps) == 0:
+            st.error("❌ Tidak ada data suhu valid ditemukan.")
+        else:
+            st.info(f"📊 Data suhu valid ditemukan: {len(temps)} menit")
+            st.line_chart(temps, use_container_width=True)
 
-            if len(temps) == 0:
-                st.error("❌ Tidak ada data suhu valid yang dapat dihitung.")
+            f0 = calculate_f0(temps)
+
+            if f0[-1] == 0:
+                st.warning("⚠️ Suhu sudah >90°C, tapi nilai F₀ masih nol. Cek kembali logika atau durasi suhu tinggi.")
             else:
-                st.info(f"📊 Data suhu valid ditemukan: {len(temps)} menit")
-                f0 = calculate_f0(temps)
                 st.success(f"✅ Nilai F₀ Total: {f0[-1]:.2f}")
 
-                fig, ax = plt.subplots()
-                ax.plot(range(1, len(temps)+1), temps, label="Suhu (°C)", marker='o')
-                ax.set_xlabel("Menit")
-                ax.set_ylabel("Suhu (°C)")
-                ax2 = ax.twinx()
-                ax2.plot(range(1, len(f0)+1), f0, color='orange', label="F₀ Akumulatif", linestyle='--')
-                ax2.set_ylabel("F₀")
-                st.pyplot(fig)
+            # Plot dengan suhu dan F0
+            fig, ax = plt.subplots()
+            ax.plot(range(1, len(temps)+1), temps, label="Suhu (°C)", marker='o')
+            ax.axhline(90, color='red', linestyle='--', label="Ambang F₀ (90°C)")
+            ax.set_xlabel("Menit")
+            ax.set_ylabel("Suhu (°C)")
 
-        except Exception as e:
-            st.error(f"Gagal membaca file: {e}")
+            ax2 = ax.twinx()
+            ax2.plot(range(1, len(f0)+1), f0, color='orange', label="F₀ Akumulatif", linestyle='--')
+            ax2.set_ylabel("F₀")
+
+            ax.legend(loc="upper left")
+            ax2.legend(loc="upper right")
+            st.pyplot(fig)
