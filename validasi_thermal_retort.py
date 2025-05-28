@@ -3,6 +3,12 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from fpdf import FPDF
+pdf = FPDF()
+pdf.add_page()
+pdf.add_font('DejaVu', '', 'fonts/DejaVuSans.ttf', uni=True)
+pdf.set_font('DejaVu', '', 14)
+pdf.cell(0, 10, "✅ Validasi Suhu ≥121.1°C selama 3 menit", ln=True)
+
 from io import BytesIO
 
 st.set_page_config(page_title="Tools menghitung F0", layout="wide")
