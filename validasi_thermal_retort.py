@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 from fpdf import FPDF
 from io import BytesIO
 
-st.set_page_config(page_title="Validasi Thermal Retort", layout="wide")
-st.title("🔥 Validasi Thermal Proses Sterilisasi - PT Rumah Retort Bersama")
+st.set_page_config(page_title="Tools menghitung F0", layout="wide")
+st.title("Validasi Thermal Proses Sterilisasi - PT Rumah Retort Bersama")
 
 st.markdown("""
 Aplikasi ini menghitung nilai **F₀ (F-nol)** dari data suhu per menit selama proses sterilisasi.
